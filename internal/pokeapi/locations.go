@@ -3,64 +3,48 @@ package pokeapi
 import (
 	"encoding/json"
 	"errors"
-	"io"
-	"net/http"
 
 	"github.com/andersjbe/pokedex-cli/internal/pokecache"
 )
 
-func GetLocations(url string, cache pokecache.Cache) ([]string, string, string, error) {
-	if _, cached := cache.Get(url); !cached {
-		fetched, fetchErr := fetchLocations(url)
-		if fetchErr != nil {
-			return nil, "", "", fetchErr
-		}
-		cache.Add(url, fetched)
+func GetLocations(url string, cache *pokecache.Cache) ([]string, string, string, error) {
+	body, fetchErr := FetchUrl(url, cache)
+	if fetchErr != nil {
+		return nil, "", "", fetchErr
 	}
 
-	body, _ := cache.Get(url)
-
-	location, jsonErr := parseLocations(body)
+	locations := LocationsJson {}
+	jsonErr := json.Unmarshal(body, &locations)
 	if jsonErr != nil {
 		return nil, "", "", jsonErr
 	}
 
 	results := make([]string, 0, 20)
-	for _, loc := range location.Results {
+	for _, loc := range locations.Results {
 		results = append(results, loc.Name)
 	}
 
-	previous := ""
-	if s, ok := location.Previous.(string); ok {
-		previous = s
-	}
-	return results, location.Next, previous, nil
+	return results, locations.Next, locations.Previous, nil
 }
 
-func fetchLocations(url string) ([]byte, error) {
-	res, httpErr := http.Get(url)
-	if res.StatusCode >= 400 {
-		return nil, errors.New("Encountered error while fetching resource")
-	}
-	if httpErr != nil {
-		return nil, httpErr
+func GetLocationByName(url string, cache *pokecache.Cache) (LocationJson, error) {
+	body, fetchErr := FetchUrl(url, cache)
+	if fetchErr != nil {
+		return LocationJson{}, errors.New("Location not found")
 	}
 
-	body, readErr := io.ReadAll(res.Body)
-	res.Body.Close()
-	if readErr != nil {
-		return nil, readErr
-	}
-
-	return body, nil
-}
-
-func parseLocations(body []byte) (LocationJson, error) {
 	location := LocationJson {}
 	jsonErr := json.Unmarshal(body, &location)
 	if jsonErr != nil {
-		return location, jsonErr
+		return LocationJson{}, jsonErr
 	}
 
 	return location, nil
+
+	// results := []string {}
+	// for _, pokemon := range location.PokemonEncounters {
+	// 	results = append(results, pokemon.Pokemon.Name)
+	// }
+
+	// return results, nil
 }

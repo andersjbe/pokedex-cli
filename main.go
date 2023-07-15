@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,12 +35,14 @@ func main() {
 	fmt.Print("pokedex > ")
 	for ; scanner.Scan(); fmt.Print("pokedex > ") {
 		input := scanner.Text()
-		command, ok := commands[input]
+		inputs := strings.Split(input, " ")
+		args := inputs[1:]
+		command, ok := commands[inputs[0]]
 		if !ok  {
 			fmt.Fprintln(os.Stderr, "command not recognized")
 			continue
 		}
-		err := command.callback(&ctx)
+		err := command.callback(&ctx, args)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}
@@ -58,7 +61,7 @@ type context struct {
 type cliCommand struct {
 	name 					string
 	description 	string
-	callback 			func(*context) error
+	callback 			func(*context, []string) error
 }
 
 type config	struct {
@@ -88,10 +91,15 @@ func getCommands() map[string]cliCommand  {
 			description: "Print the last 20 Pokemon game locations",
 			callback: mapBackCommand,
 		},
+		"explore": {
+			name: "explore <location>",
+			description: "List all the pokemon found in a location",
+			callback: exploreCommand,
+		},
 	}
 }
 
-func helpCommand(ctx *context)  error {
+func helpCommand(ctx *context, _ []string)  error {
 	fmt.Println("Welcome to the Pokedex!\nUsage:\n")
 	for _, command := range *ctx.commands {
 		fmt.Printf("%s: %s\n", command.name, command.description)
@@ -100,15 +108,15 @@ func helpCommand(ctx *context)  error {
 	return nil
 }
 
-func exitCommand(_ *context) error {
+func exitCommand(_ *context, _ []string) error {
 	os.Exit(0)
 	return nil
 }
 
-func mapCommand(ctx *context) error {
+func mapCommand(ctx *context, _ []string) error {
 	conf := *ctx.pages
 
-	locations, next, previous, err := pokeapi.GetLocations(conf["locations"].next, *ctx.cache)
+	locations, next, previous, err := pokeapi.GetLocations(conf["locations"].next, ctx.cache)
 	if err != nil {
 		return err
 	}
@@ -127,13 +135,13 @@ func mapCommand(ctx *context) error {
 	return nil
 }
 
-func mapBackCommand(ctx *context) error {
+func mapBackCommand(ctx *context, _ []string) error {
 	conf := *ctx.pages
 
 	if conf["locations"].previous == "" {
 		return errors.New("No previous page")
 	}
-	locations, next, previous, err := pokeapi.GetLocations(conf["locations"].previous, *ctx.cache)
+	locations, next, previous, err := pokeapi.GetLocations(conf["locations"].previous, ctx.cache)
 	if err != nil {
 		return err
 	}
@@ -147,6 +155,24 @@ func mapBackCommand(ctx *context) error {
 	fmt.Println("Locations:")
 	for i:=0; i<len(locations); i++ {
 		fmt.Println(" - " + locations[i])
+	}
+
+	return nil
+}
+
+func exploreCommand(ctx *context, args []string) error {
+	if len(args) == 0 {
+		return errors.New("Please enter a valid location to explore")
+	}
+	location, err := pokeapi.GetLocationByName("https://pokeapi.co/api/v2/location-area/" + args[0], ctx.cache)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Exploring %s...\n", location.Name)
+	fmt.Println("Found Pokemon:")
+	for _, pokemon := range location.PokemonEncounters {
+		fmt.Println(" - " + pokemon.Pokemon.Name)
 	}
 
 	return nil
