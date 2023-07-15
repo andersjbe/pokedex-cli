@@ -5,14 +5,31 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
+	"time"
 
 	"github.com/andersjbe/pokedex-cli/internal/pokeapi"
+	"github.com/andersjbe/pokedex-cli/internal/pokecache"
 )
 
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
-	getCommands := createCommands()
-	commands := *getCommands()
+
+	mux := &sync.Mutex{}
+
+	commands := getCommands()
+	cache := pokecache.NewCache(time.Minute * 5, mux)
+	conf := make(map[string]config)
+	conf["locations"] = config{
+		next: "https://pokeapi.co/api/v2/location-area/?limit=20",
+		previous: "",
+	}
+
+	ctx := context {
+		commands: &commands,
+		cache: &cache,
+		pages: &conf,
+	}
 
 	fmt.Print("pokedex > ")
 	for ; scanner.Scan(); fmt.Print("pokedex > ") {
@@ -22,7 +39,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "command not recognized")
 			continue
 		}
-		err := command.callback(&commands)
+		err := command.callback(&ctx)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}
@@ -32,11 +49,16 @@ func main() {
 	}
 }
 
+type context struct {
+	commands *map[string]cliCommand
+	cache *pokecache.Cache
+	pages *map[string]config
+}
+
 type cliCommand struct {
 	name 					string
 	description 	string
-	callback 			func(*map[string]cliCommand) error
-	config				*config
+	callback 			func(*context) error
 }
 
 type config	struct {
@@ -44,13 +66,8 @@ type config	struct {
 	previous 			string
 }
 
-func createCommands() func() *map[string]cliCommand  {
-	locationConfig := config{
-		next: "https://pokeapi.co/api/v2/location-area/?limit=20",
-		previous: "",
-	}
-
-	commands := map[string]cliCommand{
+func getCommands() map[string]cliCommand  {
+	return map[string]cliCommand{
 		"help": {
 			name: "help",
 			description: "Output all available commands",
@@ -65,73 +82,71 @@ func createCommands() func() *map[string]cliCommand  {
 			name: "map",
 			description: "Print the next 20 Pokemon game locations",
 			callback: mapCommand,
-			config: &locationConfig,
 		},
 		"mapb": {
 			name: "mapb",
 			description: "Print the last 20 Pokemon game locations",
 			callback: mapBackCommand,
-			config: &locationConfig,
 		},
-	}
-
-	return func() *map[string]cliCommand {
-		return &commands
 	}
 }
 
-func helpCommand(commandRefs *map[string]cliCommand) error {
-	commands := *commandRefs
-
+func helpCommand(ctx *context)  error {
 	fmt.Println("Welcome to the Pokedex!\nUsage:\n")
-	for _, command := range commands {
+	for _, command := range *ctx.commands {
 		fmt.Printf("%s: %s\n", command.name, command.description)
 	}
 	fmt.Println()
 	return nil
 }
 
-func exitCommand(_  *map[string]cliCommand) error {
+func exitCommand(_ *context) error {
 	os.Exit(0)
 	return nil
 }
 
-func mapCommand(commandRefs *map[string]cliCommand) error {
-	commands := *commandRefs
+func mapCommand(ctx *context) error {
+	conf := *ctx.pages
 
-	locations, next, previous, err := pokeapi.GetLocations(commands["map"].config.next)
-
+	locations, next, previous, err := pokeapi.GetLocations(conf["locations"].next, *ctx.cache)
 	if err != nil {
 		return err
 	}
 
-	commands["map"].config.next = next
-	commands["map"].config.previous = previous
+	conf["locations"] = config{
+		next: next,
+		previous: previous,
+	}
+	*ctx.pages = conf
 
-	for _, location := range locations {
-		fmt.Println(location)
+	fmt.Println("Locations:")
+	for i:=0; i<len(locations); i++ {
+		fmt.Println(" - " + locations[i])
 	}
 
 	return nil
 }
 
-func mapBackCommand(commandRefs *map[string]cliCommand) error {
-	commands := *commandRefs
+func mapBackCommand(ctx *context) error {
+	conf := *ctx.pages
 
-	if commands["map"].config.previous == "" {
+	if conf["locations"].previous == "" {
 		return errors.New("No previous page")
 	}
-	locations, next, previous, err := pokeapi.GetLocations(commands["map"].config.previous)
-
+	locations, next, previous, err := pokeapi.GetLocations(conf["locations"].previous, *ctx.cache)
 	if err != nil {
 		return err
 	}
 
-	commands["map"].config.next = next
-	commands["map"].config.previous = previous
+	conf["locations"] = config{
+		next: next,
+		previous: previous,
+	}
+	*ctx.pages = conf
 
-	for _, location := range locations {
-		fmt.Println(location)
+	fmt.Println("Locations:")
+	for i:=0; i<len(locations); i++ {
+		fmt.Println(" - " + locations[i])
 	}
 
 	return nil
