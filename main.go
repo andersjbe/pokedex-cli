@@ -2,13 +2,17 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
+
+	"github.com/andersjbe/pokedex-cli/internal/pokeapi"
 )
 
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
-	commands := getCommands()
+	getCommands := createCommands()
+	commands := *getCommands()
 
 	fmt.Print("pokedex > ")
 	for ; scanner.Scan(); fmt.Print("pokedex > ") {
@@ -18,7 +22,10 @@ func main() {
 			fmt.Fprintln(os.Stderr, "command not recognized")
 			continue
 		}
-		command.callback()
+		err := command.callback(&commands)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "reading standard input:", err)
@@ -28,11 +35,22 @@ func main() {
 type cliCommand struct {
 	name 					string
 	description 	string
-	callback 			func() error
+	callback 			func(*map[string]cliCommand) error
+	config				*config
 }
 
-func getCommands() map[string]cliCommand {
-	return map[string]cliCommand{
+type config	struct {
+	next 					string
+	previous 			string
+}
+
+func createCommands() func() *map[string]cliCommand  {
+	locationConfig := config{
+		next: "https://pokeapi.co/api/v2/location-area/?limit=20",
+		previous: "",
+	}
+
+	commands := map[string]cliCommand{
 		"help": {
 			name: "help",
 			description: "Output all available commands",
@@ -43,11 +61,27 @@ func getCommands() map[string]cliCommand {
 			description: "Exit the program",
 			callback: exitCommand,
 		},
+		"map": {
+			name: "map",
+			description: "Print the next 20 Pokemon game locations",
+			callback: mapCommand,
+			config: &locationConfig,
+		},
+		"mapb": {
+			name: "mapb",
+			description: "Print the last 20 Pokemon game locations",
+			callback: mapBackCommand,
+			config: &locationConfig,
+		},
+	}
+
+	return func() *map[string]cliCommand {
+		return &commands
 	}
 }
 
-func helpCommand() error {
-	commands := getCommands()
+func helpCommand(commandRefs *map[string]cliCommand) error {
+	commands := *commandRefs
 
 	fmt.Println("Welcome to the Pokedex!\nUsage:\n")
 	for _, command := range commands {
@@ -57,7 +91,48 @@ func helpCommand() error {
 	return nil
 }
 
-func exitCommand() error {
+func exitCommand(_  *map[string]cliCommand) error {
 	os.Exit(0)
+	return nil
+}
+
+func mapCommand(commandRefs *map[string]cliCommand) error {
+	commands := *commandRefs
+
+	locations, next, previous, err := pokeapi.GetLocations(commands["map"].config.next)
+
+	if err != nil {
+		return err
+	}
+
+	commands["map"].config.next = next
+	commands["map"].config.previous = previous
+
+	for _, location := range locations {
+		fmt.Println(location)
+	}
+
+	return nil
+}
+
+func mapBackCommand(commandRefs *map[string]cliCommand) error {
+	commands := *commandRefs
+
+	if commands["map"].config.previous == "" {
+		return errors.New("No previous page")
+	}
+	locations, next, previous, err := pokeapi.GetLocations(commands["map"].config.previous)
+
+	if err != nil {
+		return err
+	}
+
+	commands["map"].config.next = next
+	commands["map"].config.previous = previous
+
+	for _, location := range locations {
+		fmt.Println(location)
+	}
+
 	return nil
 }
