@@ -41,10 +41,4 @@ func GetLocationByName(url string, cache *pokecache.Cache) (LocationJson, error)
 
 	return location, nil
 
-	// results := []string {}
-	// for _, pokemon := range location.PokemonEncounters {
-	// 	results = append(results, pokemon.Pokemon.Name)
-	// }
-
-	// return results, nil
 }

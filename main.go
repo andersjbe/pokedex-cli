@@ -105,6 +105,16 @@ func getCommands() map[string]cliCommand  {
 			description: "Attempt to catch a pokemon. Success rate is based on pokemon's base experience",
 			callback: catchCommand,
 		},
+		"identify": {
+			name: "identify <pokemon>",
+			description: "View the details of a caught pokemon",
+			callback: identifyCommand,
+		},
+		"pokedex": {
+			name: "pokedex",
+			description: "List the pokemon recorded in the pokedex",
+			callback: pokedexCommand,
+		},
 	}
 }
 
@@ -189,7 +199,7 @@ func exploreCommand(ctx *context, args []string) error {
 
 func catchCommand(ctx *context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("Please enter a valid location to explore")
+		return errors.New("Please enter a pokemon to catch")
 	}
 
 	pokemon, err := pokeapi.GetPokemonByName(args[0], *ctx.cache)
@@ -211,6 +221,42 @@ func catchCommand(ctx *context, args []string) error {
 		fmt.Println("Shoot! Almost had it")
 	} else {
 		fmt.Printf("%s broke free!\n", pokemon.Name)
+	}
+
+	return nil
+}
+
+func identifyCommand(ctx *context, args []string) error {
+	if len(args) == 0 {
+		return errors.New("Please enter a pokemon to identify")
+	}
+
+	pokedex := *ctx.pokedex
+	pokemon, found := pokedex[args[0]]
+	if !found {
+		return errors.New(fmt.Sprintf("Pokemon %s not recognized", args[0]))
+	}
+
+	fmt.Println("Name: " + pokemon.Name)
+	fmt.Printf("Height: %d\n", pokemon.Height)
+	fmt.Printf("Weight: %d\n", pokemon.Weight)
+	fmt.Println("Types:")
+	for _, typ := range pokemon.Types {
+		fmt.Printf("\t- %s\n", typ.Type.Name)
+	}
+	fmt.Println("Stats:")
+	for _, stat := range pokemon.Stats {
+		fmt.Printf("\t- %s: %d\n", stat.Stat.Name, stat.BaseStat)
+	}
+
+	return nil
+}
+
+func pokedexCommand(ctx *context, _ []string) error {
+	println("Your Pokedex:")
+
+	for _, pokemon := range *ctx.pokedex {
+		fmt.Printf(" - %s\n", pokemon.Name)
 	}
 
 	return nil
