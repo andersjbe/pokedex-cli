@@ -110,6 +110,11 @@ func getCommands() map[string]cliCommand  {
 			description: "View the details of a caught pokemon",
 			callback: identifyCommand,
 		},
+		"pokedex": {
+			name: "pokedex",
+			description: "List the pokemon recorded in the pokedex",
+			callback: pokedexCommand,
+		},
 	}
 }
 
@@ -242,6 +247,16 @@ func identifyCommand(ctx *context, args []string) error {
 	fmt.Println("Stats:")
 	for _, stat := range pokemon.Stats {
 		fmt.Printf("\t- %s: %d\n", stat.Stat.Name, stat.BaseStat)
+	}
+
+	return nil
+}
+
+func pokedexCommand(ctx *context, _ []string) error {
+	println("Your Pokedex:")
+
+	for _, pokemon := range *ctx.pokedex {
+		fmt.Printf(" - %s\n", pokemon.Name)
 	}
 
 	return nil
