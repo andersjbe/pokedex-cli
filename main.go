@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
@@ -25,11 +26,13 @@ func main() {
 		next: "https://pokeapi.co/api/v2/location-area/?limit=20",
 		previous: "",
 	}
+	pokedex := make(map[string]pokeapi.Pokemon)
 
 	ctx := context {
 		commands: &commands,
 		cache: &cache,
 		pages: &conf,
+		pokedex: &pokedex,
 	}
 
 	fmt.Print("pokedex > ")
@@ -56,6 +59,7 @@ type context struct {
 	commands *map[string]cliCommand
 	cache *pokecache.Cache
 	pages *map[string]config
+	pokedex *map[string]pokeapi.Pokemon
 }
 
 type cliCommand struct {
@@ -95,6 +99,11 @@ func getCommands() map[string]cliCommand  {
 			name: "explore <location>",
 			description: "List all the pokemon found in a location",
 			callback: exploreCommand,
+		},
+		"catch": {
+			name: "catch <pokemon>",
+			description: "Attempt to catch a pokemon. Success rate is based on pokemon's base experience",
+			callback: catchCommand,
 		},
 	}
 }
@@ -173,6 +182,35 @@ func exploreCommand(ctx *context, args []string) error {
 	fmt.Println("Found Pokemon:")
 	for _, pokemon := range location.PokemonEncounters {
 		fmt.Println(" - " + pokemon.Pokemon.Name)
+	}
+
+	return nil
+}
+
+func catchCommand(ctx *context, args []string) error {
+	if len(args) == 0 {
+		return errors.New("Please enter a valid location to explore")
+	}
+
+	pokemon, err := pokeapi.GetPokemonByName(args[0], *ctx.cache)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Throwing a pokeball at %s...\n", pokemon.Name)
+
+	// Generate a random number that represents the success of the catch
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+	catchRoll := r.Intn(637)
+
+	if catchRoll >= pokemon.BaseExperience {
+		pokedex := *ctx.pokedex
+		pokedex[pokemon.Name] = pokemon
+		fmt.Printf("%s was caught!\n", pokemon.Name)
+	} else if catchRoll < pokemon.BaseExperience && catchRoll > pokemon.BaseExperience + 100 {
+		fmt.Println("Shoot! Almost had it")
+	} else {
+		fmt.Printf("%s broke free!\n", pokemon.Name)
 	}
 
 	return nil
